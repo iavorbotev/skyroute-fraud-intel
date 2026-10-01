@@ -48,7 +48,7 @@ def build_settled_rates(history: pd.DataFrame, prior_strength: float, outlier_qu
         counts = groups["is_fraud"].agg(["sum", "count"])
         return (counts["sum"] + prior_strength * overall_rate) / (counts["count"] + prior_strength)
 
-    segment_rates = smoothed(approved.groupby(["billing_country", "payment_method"]))
+    segment_rates = smoothed(approved.groupby(["billing_country", "payment_method"])).rename("rate").reset_index()
     card_rows = approved[approved["card_bin"].notna() & (approved["card_bin"] != "")]
     bin_rates = smoothed(card_rows.groupby("card_bin"))
     amount_p99 = (
@@ -56,7 +56,12 @@ def build_settled_rates(history: pd.DataFrame, prior_strength: float, outlier_qu
     )
     return SettledRates(
         overall_rate=overall_rate,
-        segment_rates={(str(country), str(method)): float(value) for (country, method), value in segment_rates.items()},
+        segment_rates={
+            (str(country), str(method)): float(value)
+            for country, method, value in zip(
+                segment_rates["billing_country"], segment_rates["payment_method"], segment_rates["rate"], strict=True
+            )
+        },
         bin_rates={str(key): float(value) for key, value in bin_rates.items()},
         amount_p99={
             (str(country), str(method)): float(value)
