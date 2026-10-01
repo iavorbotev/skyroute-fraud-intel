@@ -37,18 +37,20 @@ def summary_insight(top: pd.DataFrame) -> str:
     flagged = top[top["risk_level"] == "high"]
     if flagged.empty:
         return "No high-risk bookings on this day."
+    # group by market and method; fraud rings rotate IP countries, so splitting by IP would scatter one attack
     groups = (
-        flagged.groupby(["payment_method", "ip_country", "billing_country"])
-        .agg(transactions=("transaction_id", "count"), exposure=("amount_usd", "sum"))
+        flagged.assign(foreign_ip=flagged["ip_country"] != flagged["billing_country"])
+        .groupby(["billing_country", "payment_method"])
+        .agg(
+            transactions=("transaction_id", "count"),
+            exposure=("amount_usd", "sum"),
+            foreign_ip=("foreign_ip", "sum"),
+        )
         .sort_values(["exposure", "transactions"], ascending=False)
     )
-    (method, ip_country, billing_country), worst = next(iter(groups.iterrows()))
-    origin = (
-        f"from {billing_country}"
-        if ip_country == billing_country
-        else f"from IPs in {ip_country} billed in {billing_country}"
-    )
+    (billing_country, method), worst = next(iter(groups.iterrows()))
     return (
-        f"Today's highest risk: {method} bookings {origin} "
-        f"({int(worst['transactions'])} transactions, ${worst['exposure']:,.0f} total exposure)."
+        f"Today's highest risk: {billing_country} {method} bookings "
+        f"({int(worst['transactions'])} high-risk transactions, ${worst['exposure']:,.0f} total exposure, "
+        f"{int(worst['foreign_ip'])} from IPs outside {billing_country})."
     )
