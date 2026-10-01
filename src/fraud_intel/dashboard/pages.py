@@ -25,6 +25,11 @@ def _level_colors() -> dict[str, str]:
     return {"high": "#D64545", "medium": "#E8A33D", "low": "#8A94A6"}
 
 
+def _md(text: str) -> str:
+    # Streamlit renders $...$ as LaTeX, so two amounts in one line would turn into a formula
+    return text.replace("$", "\\$")
+
+
 def _all_levels(filters: Filters) -> Filters:
     return replace(filters, risk_levels=("low", "medium", "high"))
 
@@ -61,26 +66,32 @@ def overview(context: PageContext) -> None:
     tiles[0].metric(
         "Fraud rate",
         f"{now['fraud_rate']:.2%}",
-        delta=f"{(now['fraud_rate'] - before['fraud_rate']) * 100:+.2f} pp vs settled history "
-        f"({before['fraud_rate']:.2%})",
+        delta=f"{(now['fraud_rate'] - before['fraud_rate']) * 100:+.2f} pp vs history ({before['fraud_rate']:.2%})",
         delta_color="inverse",
         border=True,
     )
     tiles[1].metric(
         "Chargebacks",
         f"{now['frauds']:,}",
-        delta=f"${now['chargeback_cost_usd']:,.0f} lost incl. ${fee:.0f} fees",
+        delta=_md(f"${now['chargeback_cost_usd']:,.0f} lost incl. fees"),
         delta_color="off",
+        delta_arrow="off",
         border=True,
     )
     tiles[2].metric(
-        "Authorization rate", f"{now['auth_rate']:.1%}", delta="healthy band: 82-85%", delta_color="off", border=True
+        "Authorization rate",
+        f"{now['auth_rate']:.1%}",
+        delta="healthy band: 82-85%",
+        delta_color="off",
+        delta_arrow="off",
+        border=True,
     )
     tiles[3].metric(
         "High-risk bookings",
         f"{len(high):,}",
-        delta=f"${high['amount_usd'].sum():,.0f} at stake",
+        delta=_md(f"${high['amount_usd'].sum():,.0f} at stake"),
         delta_color="off",
+        delta_arrow="off",
         border=True,
     )
 
@@ -90,8 +101,10 @@ def overview(context: PageContext) -> None:
     )
     worst = segments.sort_values("chargeback_cost_usd", ascending=False).iloc[0]
     st.info(
-        f"**{sentence or ''}** The costliest segment is {worst['billing_country']} {worst['payment_method']}: "
-        f"{int(worst['frauds'])} chargebacks, ${worst['chargeback_cost_usd']:,.0f} lost."
+        _md(
+            f"**{sentence or ''}** The costliest segment is {worst['billing_country']} {worst['payment_method']}: "
+            f"{int(worst['frauds'])} chargebacks, ${worst['chargeback_cost_usd']:,.0f} lost."
+        )
     )
 
     trend_source = apply_filters(frame=context.scored, filters=_all_levels(filters), use_dates=False)
@@ -170,10 +183,7 @@ def _heatmap(segments: pd.DataFrame) -> go.Figure:
     rates = segments.pivot(index="billing_country", columns="payment_method", values="fraud_rate")
     counts = segments.pivot(index="billing_country", columns="payment_method", values="approved")
     text = [
-        [
-            "" if pd.isna(rate) else f"{rate:.1%}<br><span style='font-size:10px'>n={int(count):,}</span>"
-            for rate, count in zip(rate_row, count_row, strict=True)
-        ]
+        ["" if pd.isna(rate) else f"{rate:.1%}" for rate, count in zip(rate_row, count_row, strict=True)]
         for rate_row, count_row in zip(rates.to_numpy(), counts.to_numpy(), strict=True)
     ]
     figure = go.Figure(
@@ -185,7 +195,9 @@ def _heatmap(segments: pd.DataFrame) -> go.Figure:
             texttemplate="%{text}",
             colorscale=[[0, "#F4F6F9"], [0.5, "#F2B36B"], [1, "#C0392B"]],
             colorbar={"tickformat": ".1%", "title": None},
-            hovertemplate="%{y} %{x}: %{z:.2%}<extra></extra>",
+            customdata=counts.to_numpy(),
+            hovertemplate="%{y} %{x}: %{z:.2%} of %{customdata:,} approved<extra></extra>",
+            textfont={"size": 13},
         )
     )
     figure.update_yaxes(autorange="reversed")
@@ -207,7 +219,7 @@ def patterns(context: PageContext) -> None:
         st.warning("No transactions match the filters.")
         return
     dimensions = {
-        "Hour of day (customer's local time)": "local_hour",
+        "Hour of day (customer's local time)": "booking_hour",
         "Booking value": "value_band",
         "New vs returning customer": "customer_type",
         "IP country vs billing country": "ip_matches_billing",
@@ -261,8 +273,10 @@ def patterns(context: PageContext) -> None:
             textposition="outside",
         )
     )
-    rule_chart.add_vline(x=base_rate, line_dash="dash", line_color="#555", annotation_text="average")
-    rule_chart.update_xaxes(tickformat=".0%")
+    rule_chart.add_vline(
+        x=base_rate, line_dash="dash", line_color="#555", annotation_text="average", annotation_position="bottom right"
+    )
+    rule_chart.update_xaxes(tickformat=".0%", range=[0, by_rule["fraud_rate"].max() * 1.3])
     st.plotly_chart(
         _layout(figure=rule_chart, title="Fraud rate of approved bookings where each rule fired", height=380),
         width="stretch",
@@ -335,14 +349,19 @@ def _transaction_detail(row: pd.Series) -> None:
     facts = st.columns(5)
     facts[0].metric("Amount", f"${row['amount_usd']:,.0f}")
     facts[1].metric("Billing / IP", f"{row['billing_country']} / {row['ip_country']}")
-    facts[2].metric("Method", f"{row['payment_method']}" + (f" · BIN {row['card_bin']}" if row["card_bin"] else ""))
+    facts[2].metric(
+        "Method",
+        row["payment_method"],
+        delta=f"BIN {row['card_bin']}" if row["card_bin"] else None,
+        delta_color="off",
+        delta_arrow="off",
+    )
     facts[3].metric("Customer", row["customer_type"])
     facts[4].metric("Departs", f"{row['departure_date']:%d %b}")
     reasons = [reason for reason in str(row["reasons"]).split("; ") if reason]
-    st.markdown(
-        "**Why it was flagged**\n" + "\n".join(f"- {reason}" for reason in reasons) if reasons else "No rules fired."
-    )
-    message = f"Recommended action: **{row['recommended_action']}**"
+    reason_list = "\n".join(f"- {reason}" for reason in reasons)
+    st.markdown(_md(f"**Why it was flagged**\n{reason_list}") if reasons else "No rules fired.")
+    message = _md(f"Recommended action: **{row['recommended_action']}**")
     if row["risk_level"] == "high":
         st.error(message)
     elif row["risk_level"] == "medium":
@@ -357,22 +376,34 @@ def daily_report(context: PageContext) -> None:
     first_day, last_day = scored["timestamp_utc"].min().date(), scored["timestamp_utc"].max().date()
     day = st.date_input("Day", value=last_day, min_value=first_day, max_value=last_day, key="report_day")
     top = daily_top(frame=scored, day=day, top_n=50)
-    st.info(summary_insight(top=top))
+    st.info(_md(summary_insight(top=top)))
     actions = top["recommended_action"].value_counts()
     tiles = st.columns(4)
-    for tile, action in zip(
-        tiles,
-        ["Refund and block card", "Contact customer to verify before travel", "Manual review", "Watch customer and IP"],
-        strict=True,
-    ):
-        tile.metric(action, int(actions.get(action, 0)), border=True)
+    short_labels = {
+        "Refund and block card": "Refund and block",
+        "Contact customer to verify before travel": "Verify with customer",
+        "Manual review": "Manual review",
+        "Watch customer and IP": "Watch customer/IP",
+    }
+    for tile, (action, short) in zip(tiles, short_labels.items(), strict=True):
+        tile.metric(short, int(actions.get(action, 0)), border=True, help=action)
+    leading = ["rank", "risk_score", "risk_level"]
     st.dataframe(
-        top,
+        top.loc[:, leading + [column for column in top.columns if column not in leading]],
         hide_index=True,
         width="stretch",
         column_config={
             "rank": "#",
             "risk_score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%d"),
+            "risk_level": "Level",
+            "transaction_id": "ID",
+            "customer_id": "Customer",
+            "billing_country": "Country",
+            "ip_country": "IP",
+            "payment_method": "Method",
+            "card_bin": "BIN",
+            "status": "Status",
+            "recommended_action": "Action",
             "amount_usd": st.column_config.NumberColumn("Amount", format="$%.0f"),
             "timestamp_utc": st.column_config.DatetimeColumn("Time (UTC)", format="HH:mm"),
             "reasons": st.column_config.TextColumn("Why flagged", width="large"),

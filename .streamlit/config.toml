@@ -1,0 +1,9 @@
+[client]
+# reviewers see the app, not Streamlit's developer menu
+toolbarMode = "viewer"
+
+[theme]
+primaryColor = "#2F5D9E"
+
+[browser]
+gatherUsageStats = false

@@ -20,6 +20,7 @@ def add_dimensions(frame: pd.DataFrame) -> pd.DataFrame:
         bins=[-float("inf"), 2, 7, 30, float("inf")],
         labels=["0-2 days", "3-7 days", "8-30 days", "30+ days"],
     )
+    enriched["booking_hour"] = enriched["local_hour"].map(lambda hour: f"{int(hour):02d}:00")
     enriched["night_booking"] = enriched["local_hour"].lt(6).map({True: "00:00-05:59", False: "06:00-23:59"})
     enriched["ip_matches_billing"] = (enriched["ip_country"] == enriched["billing_country"]).map(
         {True: "IP matches billing", False: "IP differs from billing"}
