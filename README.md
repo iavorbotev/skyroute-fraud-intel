@@ -7,25 +7,33 @@ It is fraud *intelligence*, not fraud prevention: it explains what is happening 
 
 ## How do I run it?
 
-You need Docker.
+With Docker:
 
 ```bash
-docker compose up --build
+make up        # or: docker compose up --build
 ```
 
 Open http://localhost:8501.
 On start, the container loads the dataset in `data/transactions.csv.gz`, replays it through the scoring stream (about 3 seconds for 80,653 events), prints every alert to the console, and starts the dashboard.
+`make logs` shows the alerts, and `make down` stops it.
 
-To run without Docker, use [uv](https://docs.astral.sh/uv/):
+Without Docker, you need [uv](https://docs.astral.sh/uv/) and `make`:
 
 ```bash
-uv sync
-uv run fraud-intel generate                                  # rebuild the dataset from config.toml (optional, it is committed)
-uv run fraud-intel ingest --file data/transactions.csv.gz    # load, dedupe, replay the stream, save scores and alerts
-uv run fraud-intel report --date 2026-09-18                  # daily Top 50 as CSV and JSON in reports/
-uv run streamlit run src/fraud_intel/dashboard/app.py
-uv run ruff check && uv run ty check && uv run pytest        # lint, types, 20 tests
+make all       # install, lint, types, tests, rebuild data, score it, export a report, open the dashboard
 ```
+
+Or run one step at a time (`make help` lists them):
+
+| Target | What it does |
+|---|---|
+| `make install` | install dependencies with uv |
+| `make check` | ruff lint and format check, ty type check, 20 pytest tests |
+| `make data` | rebuild the seeded dataset from `config.toml` (it is also committed) |
+| `make ingest` | load `DATA`, replay the stream, save scores and alerts |
+| `make report DATE=2026-09-18` | export that day's Top 50 to `reports/` as CSV and JSON |
+| `make dashboard PORT=8501` | run the dashboard locally |
+| `make clean` | remove the database, reports, and caches |
 
 `ingest` takes any CSV or JSON batch with the same columns.
 It skips transaction IDs it has already seen, so feeding the same file twice is safe.
