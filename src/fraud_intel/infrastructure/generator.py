@@ -362,8 +362,9 @@ def _timestamps(
     countries: np.ndarray,
 ) -> pd.DatetimeIndex:
     offsets = pd.Series(countries).map(world.utc_offset_hours).to_numpy()
-    # local hour minus the UTC offset gives the UTC hour
-    hours = day * 24 + local_hour - offsets + rng.uniform(0, 1, size=len(day))
+    # local hour minus the UTC offset gives the UTC hour; wrap so late-evening bookings stay inside the window
+    window_hours = (int(day.max()) + 1) * 24 if len(day) else 24
+    hours = (day * 24 + local_hour - offsets + rng.uniform(0, 1, size=len(day))) % window_hours
     return pd.DatetimeIndex(start + pd.to_timedelta(hours, unit="h"))
 
 
