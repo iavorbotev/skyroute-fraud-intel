@@ -11,6 +11,7 @@ from fraud_intel.config import AppConfig
 from fraud_intel.dashboard.filters import Filters, apply_filters
 from fraud_intel.domain.metrics import comparison_sentence, headline, segment_scorecard, segment_summary
 from fraud_intel.domain.metrics import score_check as measure_score
+from fraud_intel.domain.patterns import PatternFinding, detect_patterns
 from fraud_intel.domain.report import daily_top, summary_insight
 
 
@@ -410,12 +411,54 @@ def _segment_split(
     return _layout(figure=figure, title=f"Money lost to chargebacks, split by {label}", height=320)
 
 
+def _pattern_highlights(context: PageContext) -> None:
+    st.subheader("What stands out in this data?")
+    st.caption(
+        "Found automatically: each check scans the filtered bookings for a known fraud shape, "
+        "so it finds new attacks too. The risk-level filter is ignored here, so rates compare against all bookings."
+    )
+    settings = context.config.patterns
+    findings = detect_patterns(
+        frame=apply_filters(frame=context.scored, filters=_all_levels(context.filters), use_dates=True),
+        high_value_usd=context.config.risk.high_value_usd,
+        burst_window_days=settings.burst_window_days,
+        burst_min_ratio=settings.burst_min_ratio,
+        burst_min_count=settings.burst_min_count,
+        big_booking_usd=settings.big_booking_usd,
+    )
+    risky = [finding for finding in findings if not finding.caution]
+    if not risky:
+        st.info("No risky pattern stands out in the filtered bookings.")
+    for start in range(0, len(risky), 2):
+        for column, finding in zip(st.columns(2), risky[start : start + 2], strict=False):
+            with column.container(border=True):
+                _finding_card(finding=finding)
+    for finding in findings:
+        if finding.caution:
+            st.info(_md(f"**{finding.title}.** {finding.sentence}"))
+
+
+def _finding_card(finding: PatternFinding) -> None:
+    st.markdown(f"**{finding.title}**")
+    st.metric(
+        "Fraud rate",
+        f"{finding.fraud_rate:.0%}",
+        delta=f"{finding.lift:.0f}x the average",
+        delta_color="off",
+        delta_arrow="off",
+        label_visibility="collapsed",
+    )
+    st.caption(_md(f"{finding.sentence} **${finding.fraud_usd:,.0f}** lost."))
+
+
 def patterns(context: PageContext) -> None:
     fee = context.config.chargeback_fee_usd
     current = apply_filters(frame=context.scored, filters=context.filters, use_dates=True)
     if current.empty:
         st.warning("No transactions match the filters.")
         return
+    _pattern_highlights(context=context)
+    st.subheader("Slice fraud by any dimension")
     dimensions = {
         "Hour of day (customer's local time)": "booking_hour",
         "Booking value": "value_band",

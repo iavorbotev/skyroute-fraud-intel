@@ -63,6 +63,14 @@ class AlertConfig:
 
 
 @dataclass(frozen=True)
+class PatternConfig:
+    burst_window_days: int
+    burst_min_ratio: float
+    burst_min_count: int
+    big_booking_usd: float
+
+
+@dataclass(frozen=True)
 class AppConfig:
     seed: int
     data_path: Path
@@ -73,6 +81,7 @@ class AppConfig:
     generator: GeneratorConfig
     risk: RiskConfig
     alerts: AlertConfig
+    patterns: PatternConfig
 
 
 def load_config(path: Path) -> AppConfig:
@@ -94,4 +103,5 @@ def load_config(path: Path) -> AppConfig:
         generator=GeneratorConfig(**generator_raw),
         risk=RiskConfig(**raw["risk"]),
         alerts=AlertConfig(**raw["alerts"]),
+        patterns=PatternConfig(**raw["patterns"]),
     )

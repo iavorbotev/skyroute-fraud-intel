@@ -238,3 +238,14 @@ The page question and the filter bar now stay at the top while the page scrolls.
 ## Follow-up: shorter README
 
 The README went from 260 to about 70 lines. It keeps what the brief requires there: how to run, the pages, a findings summary with the five recommendations, a small architecture sketch, and the design decisions. The detail moved, unchanged, into three docs grouped by reader: `docs/findings.md` (full tables, the AR attack, score check, recommendations), `docs/design.md` (stream, code layout, own-batch fields, make targets, rules, alerts, scaling, Beam), and `docs/roadmap.md` (statistical tests and other future work).
+
+## Follow-up: "What stands out" on the Patterns page
+
+A new section at the top of Patterns highlights the risky patterns automatically. Following the rule against tuning code to one dataset, `domain/patterns.py` has general checks that run on whatever bookings and filters are active:
+
+- **Burst:** the country and method pair whose high-value bookings in some 3-day window most exceed their usual (median) 3-day level.
+- **Velocity and card testing:** the bookings where those rules fired.
+- **IP mismatch:** bookings whose IP country differs from billing, with the top IP countries.
+- **Caution note:** big bookings from returning customers, which are rarely fraud. This is the false-positive case the brief asked to plant.
+
+Thresholds live in a new `[patterns]` config section. Tests check that the checks find the planted patterns in the generated data (the AR card burst within two days of the configured start). A second test puts a burst in a different market (CO pix) and checks it is found too. On the full data the checks report: AR card 17-19 Sep, 84% fraud (31x the average); card testing 24x; velocity 23x; IP mismatch 13x; and big bookings from returning customers 0% fraud vs 40% for first-time customers. 29 tests.

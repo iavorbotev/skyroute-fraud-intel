@@ -22,7 +22,7 @@ It needs only the fields the brief lists ([details](docs/design.md#how-do-i-feed
 | Overview | What is our fraud rate, what does it cost, and which country and method is riskiest? |
 | Countries | How does each country compare with the others and with last month? |
 | Payment methods | How does each method compare with the others and with last month? |
-| Patterns | Which behaviors go with fraud: hour, value, new customer, IP mismatch, days to departure? |
+| Patterns | What stands out (bursts, velocity, card testing, IP mismatch, found automatically), and which behaviors go with fraud? |
 | Transactions | Which bookings should we look at first, and why was each one flagged? |
 | Daily report | What are today's 50 riskiest bookings and what should we do with each? |
 | Alerts | What fired that needs attention now? |

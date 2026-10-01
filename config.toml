@@ -102,3 +102,11 @@ share_spike_multiplier = 2.0
 share_spike_min_high_risk = 5
 country_burst_multiplier = 3.0
 country_burst_min_count = 10
+
+# the "what stands out" checks on the Patterns page
+[patterns]
+burst_window_days = 3
+# a burst must reach this multiple of the segment's usual level for the same number of days
+burst_min_ratio = 2.0
+burst_min_count = 10
+big_booking_usd = 1500.0
