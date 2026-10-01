@@ -230,3 +230,7 @@ The brief's acceptance test is "feed your system a batch of transactions". We ch
 - **Dashboard crash and display bugs.** An all-empty `departure_date` column was stored as an integer type, which crashed the date math; it is now typed explicitly. The overview showed a literal `****` and a meaningless "scored window starts" line when there was no history; both are fixed.
 
 New tests cover the brief-only schema, scoring with no history, the missing folder, and every page rendering for a brief-only batch (27 tests). Ran it end to end with the CLI (ingest, report) and in the browser through the container. The main dataset's results did not change: 312 high-risk bookings, 49 alerts.
+
+## Follow-up: pinned header
+
+The page question and the filter bar now stay at the top while the page scrolls. Both sit in one keyed container (`page_header`), held in place by a small CSS rule. The first attempt did not stick: Streamlit wraps every container in a layout div of the same height, which leaves the element no room to move. So the rule goes on that wrapper (`[data-testid="stLayoutWrapper"]:has(> .st-key-page_header)`), and the screenshots taken after scrolling confirm it.

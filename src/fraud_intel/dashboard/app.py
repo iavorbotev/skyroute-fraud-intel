@@ -81,6 +81,19 @@ def main() -> None:
         <style>
         [data-testid="stSidebarNavLink"] p { font-size: 1.15rem; line-height: 1.4; }
         [data-testid="stSidebarNavLink"] [data-testid="stIconEmoji"] { font-size: 1.2rem; }
+        /* keep the question and the filters in view while the page scrolls, just below Streamlit's top bar;
+           Streamlit wraps the container in a same-height div, so the wrapper is what has to stick */
+        [data-testid="stLayoutWrapper"]:has(> .st-key-page_header) {
+            position: sticky;
+            top: 3.75rem;
+            z-index: 100;
+            background: #FFFFFF;
+        }
+        .st-key-page_header {
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #E5E5E5;
+        }
+        .st-key-page_header h1 { padding-top: 0; }
         </style>
         """
     )
@@ -104,8 +117,9 @@ def main() -> None:
         "the 30 days before are the settled history the segment rates come from."
     )
     # heading and filters live here, not in the pages: widgets in the entry script keep their values across pages
-    st.title(_headings()[navigation.title])
-    filters = _filter_bar(scored=scored)
+    with st.container(key="page_header"):
+        st.title(_headings()[navigation.title])
+        filters = _filter_bar(scored=scored)
     # pages are separate files so each has its own URL; they read the shared context from the session
     st.session_state["context"] = pages.PageContext(scored=scored, alerts=alerts, filters=filters, config=config)
     navigation.run()
