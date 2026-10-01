@@ -190,3 +190,4 @@ Tests are red/green, two or three per task, built on fakes.
 ## Task log
 
 - **0. Scaffold:** done. Local Python is 3.14 (no 3.13 on the machine), so the project and the Docker image both use 3.14. pandas resolved to 3.0. `README.md` is added in task 7, so `pyproject.toml` has no `readme` field yet.
+- **1. Generator:** done. 80,653 rows (two 40,000 baselines plus planted patterns), 1.8 MB gzipped, byte-identical on rerun. Fraud is 0.74% of approved in the history window and 2.72% in the scored window (919 frauds). Method mix lands on card 60.5, PIX 19.7, OXXO 10, Boleto 5, PSE 4.9. A per-country fraud weight (AR 2.5x, MX 1.3x) gives the settled segment rates something to find. Line length raised to 120.
