@@ -74,3 +74,14 @@ Future work, including statistical tests for alerts: [docs/roadmap.md](docs/road
 - **No leakage, and tests prove it.** A test flips every fraud label in the scored window and checks that no score changes. Another test checks that two half-batches score the same as one full replay.
 - **DuckDB for storage.** It is one file, needs no server, handles SQL over millions of rows, and the dashboard opens it read-only.
 - **Streamlit for the dashboard.** All Python, with filters and downloads built in. The filter logic is a plain function, so it is tested without a browser.
+
+## How was this built?
+
+I built it with Claude Code, an AI coding assistant, running in a sandboxed container.
+
+- **Rules first.** [`.claude/CLAUDE.md`](.claude/CLAUDE.md) holds my standing instructions: plain-language writing, clean architecture, red/green TDD with fakes instead of mocks, no data leakage, and lint and tests before every commit.
+- **Plan by interview.** Before writing code, Claude read the brief and asked me one question at a time, each with its trade-off. I made the calls: Streamlit, Docker instead of hosting, rules plus segment rates, a settled month against leakage, and an in-process stream instead of Kafka or Beam. The plan and a log of every task are in [`PLAN.md`](PLAN.md).
+- **Small, tested steps.** For each task Claude wrote a failing test, then the code, ran ruff, ty, and pytest, and committed.
+- **Checked like a user.** It ran the app in Docker and investigated every page, which caught bugs the tests missed.
+- **I steered the product.** After using the dashboard, I asked for Yuno's colors, filters on top, the Countries and Payment methods pages, the automatic pattern highlights, and a check against the brief's acceptance criteria.
+- **Reviewed before submission.** Before submitting, I had Claude review the whole solution against the brief, item by item, and fix what fell short.

@@ -249,3 +249,7 @@ A new section at the top of Patterns highlights the risky patterns automatically
 - **Caution note:** big bookings from returning customers, which are rarely fraud. This is the false-positive case the brief asked to plant.
 
 Thresholds live in a new `[patterns]` config section. Tests check that the checks find the planted patterns in the generated data (the AR card burst within two days of the configured start). A second test puts a burst in a different market (CO pix) and checks it is found too. On the full data the checks report: AR card 17-19 Sep, 84% fraud (31x the average); card testing 24x; velocity 23x; IP mismatch 13x; and big bookings from returning customers 0% fraud vs 40% for first-time customers. 29 tests.
+
+## Follow-up: share the working rules
+
+`.claude/CLAUDE.md` is now in the repo (`.gitignore` keeps the rest of `.claude/` local), and the README has a short "How was this built?" section. Committed locally, not pushed, as asked.

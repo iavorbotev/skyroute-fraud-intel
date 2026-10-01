@@ -12,7 +12,9 @@ reports/
 
 # local only: challenge brief, agent config, and shell/editor dotfiles
 *.pdf
-.claude/
+# agent config stays local, except the working rules, which show how this was built
+.claude/*
+!.claude/CLAUDE.md
 .bash_profile
 .bashrc
 .gitconfig
