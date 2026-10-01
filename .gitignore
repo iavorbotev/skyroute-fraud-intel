@@ -1,0 +1,28 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# pipeline output, rebuilt from data/transactions.csv.gz
+*.duckdb
+*.duckdb.wal
+reports/
+
+# local only: challenge brief, agent config, and shell/editor dotfiles
+*.pdf
+.claude/
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.idea/
+.idea
+.mcp.json
+.profile
+.ripgreprc
+.vscode/
+.vscode
+.zprofile
+.zshrc
