@@ -48,9 +48,16 @@ Full numbers and reasoning: [docs/findings.md](docs/findings.md).
 ## How does it work?
 
 ```
-CSV / JSON batch ─► validate, dedupe ─► DuckDB ─► stream, one event at a time, with memory per customer
-                                                     ├─► score, reasons, action ─► dashboard, Top 50 export
-                                                     └─► alert watchers ─► notifier
+CSV / JSON batch
+   │  validate, drop duplicates
+   ▼
+DuckDB: raw transactions ──► fraud rates from the settled month
+   │                                     │
+   │  replay in time order               │  looked up per event
+   ▼                                     ▼
+Stream: one event at a time, with a short memory per customer
+   ├──► score, reasons, action ──► dashboard, Top 50 export
+   └──► alert watchers ──────────► notifier
 ```
 
 The scorer reads transactions in time order, the way a payment gateway would send them, so batch and live traffic run the same code.
