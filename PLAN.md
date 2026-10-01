@@ -234,3 +234,7 @@ New tests cover the brief-only schema, scoring with no history, the missing fold
 ## Follow-up: pinned header
 
 The page question and the filter bar now stay at the top while the page scrolls. Both sit in one keyed container (`page_header`), held in place by a small CSS rule. The first attempt did not stick: Streamlit wraps every container in a layout div of the same height, which leaves the element no room to move. So the rule goes on that wrapper (`[data-testid="stLayoutWrapper"]:has(> .st-key-page_header)`), and the screenshots taken after scrolling confirm it.
+
+## Follow-up: shorter README
+
+The README went from 260 to about 70 lines. It keeps what the brief requires there: how to run, the pages, a findings summary with the five recommendations, a small architecture sketch, and the design decisions. The detail moved, unchanged, into three docs grouped by reader: `docs/findings.md` (full tables, the AR attack, score check, recommendations), `docs/design.md` (stream, code layout, own-batch fields, make targets, rules, alerts, scaling, Beam), and `docs/roadmap.md` (statistical tests and other future work).
