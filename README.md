@@ -43,14 +43,20 @@ It skips transaction IDs it has already seen, so feeding the same file twice is 
 | Page | Question it answers |
 |---|---|
 | Overview | What is our fraud rate, what does it cost, and which country and payment method is riskiest? |
+| Countries | How does each country compare with the others and with last month? |
+| Payment methods | How does each payment method compare with the others and with last month? |
 | Patterns | Which behaviors go with fraud: hour of day, booking value, new vs returning, IP mismatch, days to departure? |
 | Transactions | Which bookings should we look at first, and why was each one flagged? |
 | Daily report | What are today's 50 riskiest bookings and what should we do with each? (CSV/JSON download) |
 | Alerts | What fired that needs attention now? |
 | Score check | Does the risk score find fraud? |
 
-The sidebar filters (date range, country, payment method, risk level) apply to every page.
-To see "high-risk card transactions in Mexico", pick MX, card, and high, then open Transactions.
+The Countries and Payment methods pages show every segment without any clicks.
+Each has a card per segment (fraud rate and change vs last month, money lost, chargebacks, high-risk count, auth rate), daily trend charts on one shared scale, the losses split by the other dimension, and a comparison table.
+
+The filter bar at the top of every page (dates, country, payment method, risk level) narrows all of it, and keeps its values when you switch pages.
+An empty dropdown means "all".
+To see "high-risk card transactions in Mexico", open Transactions and pick MX, card, and high.
 Click a row to see its reasons and the recommended action.
 
 ## How does it work?

@@ -5,10 +5,11 @@ from dataclasses import dataclass, replace
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
 from fraud_intel.config import AppConfig
 from fraud_intel.dashboard.filters import Filters, apply_filters
-from fraud_intel.domain.metrics import comparison_sentence, headline, segment_summary
+from fraud_intel.domain.metrics import comparison_sentence, headline, segment_scorecard, segment_summary
 from fraud_intel.domain.metrics import score_check as measure_score
 from fraud_intel.domain.report import daily_top, summary_insight
 
@@ -43,7 +44,8 @@ def _md(text: str) -> str:
 
 
 def _all_levels(filters: Filters) -> Filters:
-    return replace(filters, risk_levels=("low", "medium", "high"))
+    # trend charts and history comparisons need every row, including unscored history, so drop the risk filter
+    return replace(filters, risk_levels=())
 
 
 def _layout(figure: go.Figure, title: str, height: int) -> go.Figure:
@@ -65,10 +67,9 @@ def overview(context: PageContext) -> None:
     history = apply_filters(
         frame=context.scored[~context.scored["in_scored_window"]], filters=_all_levels(filters), use_dates=False
     )
-    st.title("What is happening with fraud right now?")
     st.caption(
         f"{filters.start:%d %b} to {filters.end:%d %b %Y} · {len(current):,} payment attempts · "
-        "sidebar filters apply to every page"
+        "the filters above apply to every page"
     )
     if current.empty:
         st.warning("No transactions match the filters.")
@@ -142,8 +143,8 @@ def overview(context: PageContext) -> None:
             "billing_country": "Country",
             "payment_method": "Method",
             "customer_type": "Customer",
-            "attempts": "Attempts",
-            "approved": "Approved",
+            "attempts": st.column_config.NumberColumn("Attempts", format="localized"),
+            "approved": st.column_config.NumberColumn("Approved", format="localized"),
             "frauds": "Chargebacks",
             "fraud_usd": None,
             "avg_amount_usd": st.column_config.NumberColumn("Avg booking", format="$%.0f"),
@@ -234,10 +235,169 @@ def _percent(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return shown
 
 
+def countries(context: PageContext) -> None:
+    _segment_page(context=context, dimension="billing_country", other="payment_method", noun="country")
+
+
+def payment_methods(context: PageContext) -> None:
+    _segment_page(context=context, dimension="payment_method", other="billing_country", noun="payment method")
+
+
+def _segment_page(context: PageContext, dimension: str, other: str, noun: str) -> None:
+    filters, fee = context.filters, context.config.chargeback_fee_usd
+    current = apply_filters(frame=context.scored, filters=filters, use_dates=True)
+    history = apply_filters(
+        frame=context.scored[~context.scored["in_scored_window"]], filters=_all_levels(filters), use_dates=False
+    )
+    st.caption(
+        f"{filters.start:%d %b} to {filters.end:%d %b %Y} · each {noun} compared with the settled 30 days before "
+        "· ordered by money lost"
+    )
+    if current.empty:
+        st.warning("No transactions match the filters.")
+        return
+    card = segment_scorecard(current=current, history=history, by=dimension, chargeback_fee_usd=fee)
+    _segment_cards(card=card, dimension=dimension)
+
+    order = list(card[dimension])
+    trend_source = apply_filters(frame=context.scored, filters=_all_levels(filters), use_dates=False)
+    scored_start = context.scored.loc[context.scored["in_scored_window"], "timestamp_utc"].min().normalize()
+    st.plotly_chart(
+        _segment_trends(
+            frame=trend_source, dimension=dimension, order=order, scored_start=scored_start, chargeback_fee_usd=fee
+        ),
+        width="stretch",
+    )
+    st.plotly_chart(
+        _segment_split(frame=current, dimension=dimension, other=other, order=order, chargeback_fee_usd=fee),
+        width="stretch",
+    )
+    st.dataframe(
+        _percent(card, columns=["fraud_rate", "history_fraud_rate", "auth_rate"]),
+        hide_index=True,
+        width="stretch",
+        column_order=[
+            dimension,
+            "attempts",
+            "approved",
+            "auth_rate",
+            "frauds",
+            "fraud_rate",
+            "history_fraud_rate",
+            "change_pp",
+            "chargeback_cost_usd",
+            "avg_amount_usd",
+            "high_risk",
+        ],
+        column_config={
+            # short headers keep all eleven columns inside the page width
+            dimension: "Country" if dimension == "billing_country" else "Method",
+            "attempts": st.column_config.NumberColumn("Attempts", format="localized"),
+            "approved": st.column_config.NumberColumn("Approved", format="localized"),
+            "auth_rate": st.column_config.NumberColumn("Auth rate", format="%.1f%%"),
+            "frauds": "Chargebacks",
+            "fraud_rate": st.column_config.NumberColumn("Fraud rate", format="%.2f%%"),
+            "history_fraud_rate": st.column_config.NumberColumn("Last month", format="%.2f%%"),
+            "change_pp": st.column_config.NumberColumn("Change", format="%+.2f pp"),
+            "chargeback_cost_usd": st.column_config.NumberColumn(
+                "Lost", format="$%.0f", help="Chargeback value plus the fee per chargeback"
+            ),
+            "avg_amount_usd": st.column_config.NumberColumn("Avg booking", format="$%.0f"),
+            "high_risk": "High risk",
+        },
+    )
+
+
+def _segment_cards(card: pd.DataFrame, dimension: str) -> None:
+    per_row = 5
+    for start in range(0, len(card), per_row):
+        chunk = card.iloc[start : start + per_row]
+        for column, (_, row) in zip(st.columns(per_row), chunk.iterrows(), strict=False):
+            with column.container(border=True):
+                change, before = row["change_pp"], row["history_fraud_rate"]
+                st.metric(
+                    str(row[dimension]),
+                    f"{row['fraud_rate']:.2%}",
+                    delta=None if pd.isna(change) else f"{change:+.2f} pp",
+                    delta_color="inverse",
+                    help="Fraud rate = chargebacks / approved bookings; the change is against last month",
+                )
+                # short lines, so every card wraps the same way in a narrow column
+                last_month = "n/a" if pd.isna(before) else f"{before:.2%}"
+                st.caption(
+                    _md(
+                        f"**${row['chargeback_cost_usd']:,.0f}** lost  \n"
+                        f"{int(row['frauds']):,} chargebacks  \n"
+                        f"**{int(row['high_risk']):,}** high risk  \n"
+                        f"Auth rate {row['auth_rate']:.1%}  \n"
+                        f"Last month {last_month}"
+                    )
+                )
+
+
+def _segment_trends(
+    frame: pd.DataFrame, dimension: str, order: list[str], scored_start: pd.Timestamp, chargeback_fee_usd: float
+) -> go.Figure:
+    daily = segment_summary(frame=frame, by=["date", dimension], chargeback_fee_usd=chargeback_fee_usd)
+    figure = make_subplots(rows=1, cols=len(order), shared_yaxes=True, subplot_titles=order, horizontal_spacing=0.02)
+    for position, segment in enumerate(order, start=1):
+        rows = daily[daily[dimension] == segment].sort_values("date")
+        # a 7-day rate from summed counts, so quiet days in small segments do not swing the line
+        weekly = rows["frauds"].rolling(7, min_periods=1).sum() / rows["approved"].rolling(7, min_periods=1).sum()
+        figure.add_bar(
+            x=rows["date"],
+            y=rows["fraud_rate"],
+            marker_color=_palette()["indigo_subtle"],
+            showlegend=False,
+            row=1,
+            col=position,
+        )
+        figure.add_scatter(
+            x=rows["date"],
+            y=weekly,
+            line={"color": _palette()["indigo"], "width": 2.5},
+            showlegend=False,
+            row=1,
+            col=position,
+        )
+        figure.add_vline(x=scored_start, line_dash="dot", line_color=_palette()["grey"], row=1, col=position)
+    figure.update_yaxes(tickformat=".0%")
+    # three ticks per small panel; more would overlap at this width
+    figure.update_xaxes(tickformat="%d %b", dtick=21 * 24 * 3600 * 1000, tick0=frame["date"].min())
+    return _layout(
+        figure=figure,
+        title="Daily fraud rate, same scale for every panel (line: 7-day rate; dotted: scored window)",
+        height=300,
+    )
+
+
+def _segment_split(
+    frame: pd.DataFrame, dimension: str, other: str, order: list[str], chargeback_fee_usd: float
+) -> go.Figure:
+    split = segment_summary(frame=frame, by=[dimension, other], chargeback_fee_usd=chargeback_fee_usd)
+    colors = [_palette()[name] for name in ("indigo", "indigo_soft", "lime", "indigo_dark", "grey")]
+    others = split.groupby(other)["chargeback_cost_usd"].sum().sort_values(ascending=False).index
+    figure = go.Figure()
+    for index, value in enumerate(others):
+        part = split[split[other] == value].set_index(dimension).reindex(order[::-1])
+        figure.add_bar(
+            y=order[::-1],
+            x=part["chargeback_cost_usd"].fillna(0),
+            name=str(value),
+            orientation="h",
+            marker_color=colors[index % len(colors)],
+            hovertemplate=f"%{{y}} {value}: $%{{x:,.0f}} lost<extra></extra>",
+        )
+    # list legend entries in stacking order, biggest share first
+    figure.update_layout(barmode="stack", legend={"traceorder": "normal"})
+    figure.update_xaxes(tickprefix="$", tickformat=",.0f")
+    label = "payment method" if other == "payment_method" else "country"
+    return _layout(figure=figure, title=f"Money lost to chargebacks, split by {label}", height=320)
+
+
 def patterns(context: PageContext) -> None:
     fee = context.config.chargeback_fee_usd
     current = apply_filters(frame=context.scored, filters=context.filters, use_dates=True)
-    st.title("Which patterns go with fraud?")
     if current.empty:
         st.warning("No transactions match the filters.")
         return
@@ -312,7 +472,6 @@ def patterns(context: PageContext) -> None:
 def transactions(context: PageContext) -> None:
     current = apply_filters(frame=context.scored, filters=context.filters, use_dates=True)
     ranked = current[current["in_scored_window"]].sort_values(["risk_score", "amount_usd"], ascending=False)
-    st.title("Which bookings should we look at first?")
     st.caption(
         f"{len(ranked):,} scored transactions match the filters, ranked by risk score then amount. "
         "Click a row to see why it was flagged."
@@ -397,10 +556,12 @@ def _transaction_detail(row: pd.Series) -> None:
 
 
 def daily_report(context: PageContext) -> None:
-    scored = context.scored[context.scored["in_scored_window"]]
-    st.title("Daily Top 50 high-risk transactions")
-    first_day, last_day = scored["timestamp_utc"].min().date(), scored["timestamp_utc"].max().date()
-    day = st.date_input("Day", value=last_day, min_value=first_day, max_value=last_day, key="report_day")
+    window = context.scored[context.scored["in_scored_window"]]
+    first_day, last_day = window["timestamp_utc"].min().date(), window["timestamp_utc"].max().date()
+    # country, method, and risk filters apply; the report covers one day, which defaults to the end of the range
+    scored = apply_filters(frame=window, filters=context.filters, use_dates=False)
+    default_day = min(max(context.filters.end, first_day), last_day)
+    day = st.date_input("Day", value=default_day, min_value=first_day, max_value=last_day, key="report_day")
     top = daily_top(frame=scored, day=day, top_n=50)
     st.info(_md(summary_insight(top=top)))
     actions = top["recommended_action"].value_counts()
@@ -446,7 +607,6 @@ def daily_report(context: PageContext) -> None:
 
 
 def alerts(context: PageContext) -> None:
-    st.title("What needs attention now?")
     feed = context.alerts.copy()
     if feed.empty:
         st.success("No alerts fired.")
@@ -487,7 +647,6 @@ def alerts(context: PageContext) -> None:
 
 
 def score_check(context: PageContext) -> None:
-    st.title("Does the risk score find fraud?")
     current = apply_filters(frame=context.scored, filters=_all_levels(context.filters), use_dates=True)
     by_level, stats = measure_score(frame=current)
     st.caption(

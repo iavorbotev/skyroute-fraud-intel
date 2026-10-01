@@ -196,3 +196,26 @@ Tests are red/green, two or three per task, built on fakes.
 - **7. E2E check and README:** done. `docker compose up --build` works; the container ingests, prints alerts, and serves the dashboard on 8501. Local Chromium lacked system libraries, so screenshots came from the Playwright Docker image on the host network. The first round of screenshots showed real bugs, now fixed: Streamlit rendered text holding two dollar amounts as a LaTeX formula, tile and column labels were cut off, the hour labels read "3.0", the heatmap text was cluttered, and the red theme and Deploy menu were visible. The README findings come from the real scored data. One honest result: the `risky_segment` rule only flags BR card, because last month's riskiest segment is not where this month's attack hit.
 - **Follow-up, Yuno colors:** the dashboard now uses Yuno's brand palette, taken from the y.uno site CSS. That is the indigo accent `#3E4FE0`, its tints (`#6B7BFF`, `#939FFF`, `#DDE6FF`), near-black `#0A0A0A`, lime `#C7E956` for the healthy auth-rate band, and the Geist font. It is set in `.streamlit/config.toml` for widgets and in one `_palette()` for the Plotly charts.
 - **Follow-up, Makefile:** `make all` runs install, lint, types, tests, data generation, ingest, the daily report, and the local dashboard, in that order; `make up/down/logs` wrap Docker. Running it end to end exposed one bug: Streamlit asks for an email on its first run and crashes without a terminal, so the dashboard target now runs headless. The regenerated dataset stayed byte-identical to the committed one.
+
+## Dashboard redesign: filters on top, a page per dimension
+
+Decisions from the interview:
+
+- **Filters stay, but move to the top.** One bar on every page holds the date range and the Country, Method, and Risk level dropdowns. An empty dropdown means "All", so the bar stays one line. Values carry over when you switch pages. The sidebar keeps only the page links.
+- **Two new pages, Countries and Payment methods.** Each one shows:
+  - a card per segment: fraud rate and its change vs the settled history, dollars lost, chargebacks, auth rate, and high-risk count
+  - side-by-side daily fraud-rate charts on one shared scale
+  - a stacked bar splitting losses by the other dimension (methods within each country, countries within each method)
+  - a comparison table
+- **Page headings and the filter bar render from `app.py`, above each page's content.** Widgets in the entry script persist across pages, so the filters keep their values.
+
+### Tasks
+
+1. Change filter semantics so an empty selection means "All"; replace the sidebar with the top bar; move page headings into `app.py`.
+2. Add a `segment_scorecard` metric (current vs history, high-risk count per segment), with a test on known numbers.
+3. Build the Countries and Payment methods pages from one shared segment-page function.
+4. Extend the page smoke tests to the new pages, rebuild Docker, review screenshots, and fix anything that looks off.
+
+### Task log
+
+- **1-4. Redesign:** done. The filter bar renders from `app.py` above each page, after the page heading, which also moved into `app.py`. Widgets in the entry script keep their values across pages, so no extra state handling was needed. Countries and Payment methods share one `_segment_page` function. The screenshots caught three layout problems, now fixed: the card text was cut off, the card lines wrapped unevenly, and the methods table was too wide for the page. Streamlit scrolls its own main container, so a full-page screenshot only shows the first screen; the screenshot script now scrolls that container. A new test drives the top bar itself (MX, card, high) and checks the Transactions table: 24 tests in total.

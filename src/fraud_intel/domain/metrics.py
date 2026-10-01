@@ -105,3 +105,20 @@ def score_check(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
         "base_rate": float(approved["is_fraud"].mean()) if len(approved) else 0.0,
     }
     return by_level.reset_index(), stats
+
+
+def segment_scorecard(current: pd.DataFrame, history: pd.DataFrame, by: str, chargeback_fee_usd: float) -> pd.DataFrame:
+    """One row per segment: this period's metrics, last period's fraud rate, the change, and high-risk count."""
+    if current is None or history is None or not by:
+        raise ValueError("current, history and a grouping column are required")
+    now = segment_summary(frame=current, by=[by], chargeback_fee_usd=chargeback_fee_usd)
+    if history.empty:
+        before = pd.DataFrame({by: pd.Series(dtype=object), "history_fraud_rate": pd.Series(dtype=float)})
+    else:
+        before = segment_summary(frame=history, by=[by], chargeback_fee_usd=chargeback_fee_usd)
+        before = before.loc[:, [by, "fraud_rate"]].rename(columns={"fraud_rate": "history_fraud_rate"})
+    high_risk = current[current["risk_level"] == "high"].groupby(by).size().rename("high_risk").reset_index()
+    card = now.merge(before, on=by, how="left").merge(high_risk, on=by, how="left")
+    card["high_risk"] = card["high_risk"].fillna(0).astype(int)
+    card["change_pp"] = (card["fraud_rate"] - card["history_fraud_rate"]) * 100
+    return card.sort_values("chargeback_cost_usd", ascending=False).reset_index(drop=True)

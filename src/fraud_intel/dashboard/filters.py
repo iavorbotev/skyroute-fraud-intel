@@ -16,13 +16,17 @@ class Filters:
 
 
 def apply_filters(frame: pd.DataFrame, filters: Filters, use_dates: bool) -> pd.DataFrame:
-    """Keep rows matching every filter; a risk-level filter also drops unscored history rows."""
+    """Keep rows matching every filter; an empty selection means "all", and a risk filter drops unscored rows."""
     if frame is None or filters is None:
         raise ValueError("frame and filters are required")
-    keep = frame["billing_country"].isin(filters.countries) & frame["payment_method"].isin(filters.methods)
+    keep = pd.Series(True, index=frame.index)
+    if filters.countries:
+        keep &= frame["billing_country"].isin(filters.countries)
+    if filters.methods:
+        keep &= frame["payment_method"].isin(filters.methods)
     if use_dates:
         day = frame["timestamp_utc"].dt.date
         keep &= (day >= filters.start) & (day <= filters.end)
-    if set(filters.risk_levels) != {"low", "medium", "high"}:
+    if filters.risk_levels:
         keep &= frame["risk_level"].isin(filters.risk_levels)
     return frame[keep]

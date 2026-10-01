@@ -1,4 +1,4 @@
-"""Streamlit entry point: load scored data once, draw the shared sidebar filters, route to the pages."""
+"""Streamlit entry point: load scored data once, draw the heading and the shared filter bar, route to the pages."""
 
 import os
 from pathlib import Path
@@ -25,31 +25,31 @@ def _load(database_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     return add_dimensions(frame=store.load_scored()), store.load_alerts()
 
 
-def _sidebar(scored: pd.DataFrame) -> Filters:
+def _filter_bar(scored: pd.DataFrame) -> Filters:
+    """One row of filters above every page; an empty dropdown means "all"."""
     scored_window = scored[scored["in_scored_window"]]
     first_day = scored["timestamp_utc"].min().date()
     last_day = scored["timestamp_utc"].max().date()
-    st.sidebar.header("Filters")
-    picked = st.sidebar.date_input(
-        "Date range",
-        value=(scored_window["timestamp_utc"].min().date(), last_day),
-        min_value=first_day,
-        max_value=last_day,
-        key="date_range",
-    )
+    with st.container(border=True):
+        dates, country, method, risk = st.columns([1.2, 1, 1, 1])
+        picked = dates.date_input(
+            "Dates",
+            value=(scored_window["timestamp_utc"].min().date(), last_day),
+            min_value=first_day,
+            max_value=last_day,
+            key="date_range",
+        )
+        chosen_countries = country.multiselect(
+            "Country", sorted(scored["billing_country"].unique()), placeholder="All countries", key="countries"
+        )
+        chosen_methods = method.multiselect(
+            "Payment method", sorted(scored["payment_method"].unique()), placeholder="All methods", key="methods"
+        )
+        chosen_levels = risk.multiselect(
+            "Risk level", ["high", "medium", "low"], placeholder="All levels", key="risk_levels"
+        )
     # while the user is mid-way through picking a range, Streamlit returns a single date
     start, end = (picked[0], picked[-1]) if isinstance(picked, tuple) and picked else (first_day, last_day)
-    countries = sorted(scored["billing_country"].unique())
-    methods = sorted(scored["payment_method"].unique())
-    chosen_countries = st.sidebar.multiselect("Country", countries, default=countries, key="countries")
-    chosen_methods = st.sidebar.multiselect("Payment method", methods, default=methods, key="methods")
-    chosen_levels = st.sidebar.multiselect(
-        "Risk level", ["high", "medium", "low"], default=["high", "medium", "low"], key="risk_levels"
-    )
-    st.sidebar.caption(
-        "Fraud rate = chargebacks / approved bookings. Scores cover the last 30 days; "
-        "the 30 days before are the settled history the segment rates come from."
-    )
     return Filters(
         start=start,
         end=end,
@@ -57,6 +57,20 @@ def _sidebar(scored: pd.DataFrame) -> Filters:
         methods=tuple(chosen_methods),
         risk_levels=tuple(chosen_levels),
     )
+
+
+def _headings() -> dict[str, str]:
+    # each page answers one question, so the question is the heading
+    return {
+        "Overview": "What is happening with fraud right now?",
+        "Countries": "How does each country compare?",
+        "Payment methods": "How does each payment method compare?",
+        "Patterns": "Which patterns go with fraud?",
+        "Transactions": "Which bookings should we look at first?",
+        "Daily report": "Daily Top 50 high-risk transactions",
+        "Alerts": "What needs attention now?",
+        "Score check": "Does the risk score find fraud?",
+    }
 
 
 def main() -> None:
@@ -73,12 +87,11 @@ def main() -> None:
     config = _config(config_path=os.environ.get("FRAUD_INTEL_CONFIG", "config.toml"))
     database_path = os.environ.get("FRAUD_INTEL_DB", str(config.database_path))
     scored, alerts = _load(database_path=database_path)
-    filters = _sidebar(scored=scored)
-    # pages are separate files so each has its own URL; they read the shared context from the session
-    st.session_state["context"] = pages.PageContext(scored=scored, alerts=alerts, filters=filters, config=config)
     navigation = st_navigation(
         [
             st.Page("views/overview.py", title="Overview", icon="📊", default=True),
+            st.Page("views/countries.py", title="Countries", icon="🌎"),
+            st.Page("views/payment_methods.py", title="Payment methods", icon="💳"),
             st.Page("views/patterns.py", title="Patterns", icon="🔎"),
             st.Page("views/transactions.py", title="Transactions", icon="🧾"),
             st.Page("views/daily_report.py", title="Daily report", icon="📄"),
@@ -86,6 +99,15 @@ def main() -> None:
             st.Page("views/score_check.py", title="Score check", icon="🎯"),
         ]
     )
+    st.sidebar.caption(
+        "Fraud rate = chargebacks / approved bookings. Scores cover the last 30 days; "
+        "the 30 days before are the settled history the segment rates come from."
+    )
+    # heading and filters live here, not in the pages: widgets in the entry script keep their values across pages
+    st.title(_headings()[navigation.title])
+    filters = _filter_bar(scored=scored)
+    # pages are separate files so each has its own URL; they read the shared context from the session
+    st.session_state["context"] = pages.PageContext(scored=scored, alerts=alerts, filters=filters, config=config)
     navigation.run()
 
 
