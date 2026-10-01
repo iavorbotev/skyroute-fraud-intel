@@ -21,8 +21,20 @@ class PageContext:
     config: AppConfig
 
 
-def _level_colors() -> dict[str, str]:
-    return {"high": "#D64545", "medium": "#E8A33D", "low": "#8A94A6"}
+def _palette() -> dict[str, str]:
+    # Yuno's brand colors, taken from y.uno: indigo accent, its tints, near-black text, lime highlight
+    return {
+        "indigo": "#3E4FE0",
+        "indigo_dark": "#1E2258",
+        "indigo_light": "#6B7BFF",
+        "indigo_soft": "#939FFF",
+        "indigo_subtle": "#DDE6FF",
+        "lime": "#C7E956",
+        "ink": "#0A0A0A",
+        "grey": "#737373",
+        "grid": "#E5E5E5",
+        "alert": "#EF4444",
+    }
 
 
 def _md(text: str) -> str:
@@ -40,6 +52,8 @@ def _layout(figure: go.Figure, title: str, height: int) -> go.Figure:
         height=height,
         margin={"l": 10, "r": 10, "t": 48, "b": 10},
         template="plotly_white",
+        font={"family": "Geist, Inter, sans-serif", "color": _palette()["ink"]},
+        colorway=[_palette()["indigo"], _palette()["indigo_soft"], _palette()["lime"]],
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.0, "xanchor": "right", "x": 1},
     )
     return figure
@@ -146,12 +160,14 @@ def _daily_fraud_chart(daily: pd.DataFrame, scored_start: pd.Timestamp) -> go.Fi
     # a spike is a day more than two standard deviations above the settled history
     threshold = history["fraud_rate"].mean() + 2 * history["fraud_rate"].std() if len(history) > 2 else None
     figure = go.Figure()
-    figure.add_bar(x=daily["date"], y=daily["fraud_rate"], name="Daily fraud rate", marker_color="#B8C4D6")
+    figure.add_bar(
+        x=daily["date"], y=daily["fraud_rate"], name="Daily fraud rate", marker_color=_palette()["indigo_subtle"]
+    )
     figure.add_scatter(
         x=daily["date"],
         y=daily["fraud_rate"].rolling(7, min_periods=1).mean(),
         name="7-day average",
-        line={"color": "#2F5D9E", "width": 3},
+        line={"color": _palette()["indigo"], "width": 3},
     )
     if threshold is not None:
         spikes = daily[daily["fraud_rate"] > threshold]
@@ -160,7 +176,7 @@ def _daily_fraud_chart(daily: pd.DataFrame, scored_start: pd.Timestamp) -> go.Fi
             y=spikes["fraud_rate"],
             mode="markers",
             name="Spike day",
-            marker={"color": "#D64545", "size": 9},
+            marker={"color": _palette()["alert"], "size": 9, "line": {"color": "white", "width": 1}},
         )
     figure.add_vline(x=scored_start, line_dash="dash", line_color="#555")
     figure.add_annotation(
@@ -172,11 +188,13 @@ def _daily_fraud_chart(daily: pd.DataFrame, scored_start: pd.Timestamp) -> go.Fi
 
 def _auth_rate_chart(daily: pd.DataFrame, scored_start: pd.Timestamp) -> go.Figure:
     figure = go.Figure()
-    figure.add_hrect(y0=0.82, y1=0.85, fillcolor="#3C9D5D", opacity=0.12, line_width=0)
-    figure.add_scatter(x=daily["date"], y=daily["auth_rate"], name="Authorization rate", line={"color": "#2F5D9E"})
+    figure.add_hrect(y0=0.82, y1=0.85, fillcolor=_palette()["lime"], opacity=0.35, line_width=0)
+    figure.add_scatter(
+        x=daily["date"], y=daily["auth_rate"], name="Authorization rate", line={"color": _palette()["indigo"]}
+    )
     figure.add_vline(x=scored_start, line_dash="dash", line_color="#555")
     figure.update_yaxes(tickformat=".0%", range=[0.7, 0.95], title=None)
-    return _layout(figure=figure, title="Authorization rate by day (green band: healthy 82-85%)", height=280)
+    return _layout(figure=figure, title="Authorization rate by day (lime band: healthy 82-85%)", height=280)
 
 
 def _heatmap(segments: pd.DataFrame) -> go.Figure:
@@ -193,7 +211,12 @@ def _heatmap(segments: pd.DataFrame) -> go.Figure:
             y=list(rates.index),
             text=text,
             texttemplate="%{text}",
-            colorscale=[[0, "#F4F6F9"], [0.5, "#F2B36B"], [1, "#C0392B"]],
+            colorscale=[
+                [0, "#F6F7FB"],
+                [0.25, _palette()["indigo_subtle"]],
+                [0.6, _palette()["indigo_light"]],
+                [1, _palette()["indigo_dark"]],
+            ],
             colorbar={"tickformat": ".1%", "title": None},
             customdata=counts.to_numpy(),
             hovertemplate="%{y} %{x}: %{z:.2%} of %{customdata:,} approved<extra></extra>",
@@ -238,11 +261,14 @@ def patterns(context: PageContext) -> None:
 
     left, right = st.columns(2)
     names = segments[column].astype(str)
-    rate_chart = go.Figure(go.Bar(x=names, y=segments["fraud_rate"], marker_color="#C0392B"))
+    rate_chart = go.Figure(go.Bar(x=names, y=segments["fraud_rate"], marker_color=_palette()["indigo"]))
     rate_chart.add_hline(y=base_rate, line_dash="dash", annotation_text="average", line_color="#555")
     rate_chart.update_yaxes(tickformat=".1%")
+    # 24 hour labels do not fit flat, and vertical text is hard to read
+    rate_chart.update_xaxes(tickangle=-45)
     left.plotly_chart(_layout(figure=rate_chart, title=f"Fraud rate by {label.lower()}", height=360), width="stretch")
-    volume_chart = go.Figure(go.Bar(x=names, y=segments["attempts"], marker_color="#2F5D9E"))
+    volume_chart = go.Figure(go.Bar(x=names, y=segments["attempts"], marker_color=_palette()["indigo_soft"]))
+    volume_chart.update_xaxes(tickangle=-45)
     right.plotly_chart(
         _layout(figure=volume_chart, title=f"Payment attempts by {label.lower()}", height=360), width="stretch"
     )
@@ -265,7 +291,7 @@ def patterns(context: PageContext) -> None:
             y=by_rule["rule"],
             x=by_rule["fraud_rate"],
             orientation="h",
-            marker_color="#E8A33D",
+            marker_color=_palette()["indigo_light"],
             text=[
                 f"{rate:.1%} of {count:,}"
                 for rate, count in zip(by_rule["fraud_rate"], by_rule["bookings"], strict=True)
@@ -480,7 +506,7 @@ def score_check(context: PageContext) -> None:
         go.Bar(
             x=[f"{interval.left:.0f}-{interval.right - 1:.0f}" for interval in by_band["risk_score"]],
             y=by_band["mean"],
-            marker_color="#C0392B",
+            marker_color=_palette()["indigo"],
             text=[f"n={count:,}" for count in by_band["count"]],
             textposition="outside",
         )

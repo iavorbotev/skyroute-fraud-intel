@@ -2,8 +2,25 @@
 # reviewers see the app, not Streamlit's developer menu
 toolbarMode = "viewer"
 
+# Yuno's brand: indigo accent, near-black text, soft indigo-grey surfaces, Geist type
 [theme]
-primaryColor = "#2F5D9E"
+base = "light"
+primaryColor = "#3E4FE0"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F6F7FB"
+textColor = "#0A0A0A"
+linkColor = "#3E4FE0"
+borderColor = "#E5E5E5"
+dataframeHeaderBackgroundColor = "#EEF0FF"
+baseRadius = "medium"
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap, sans-serif"
+headingFont = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap, sans-serif"
+headingFontWeights = [700, 600]
+chartCategoricalColors = ["#3E4FE0", "#939FFF", "#C7E956", "#1E2258", "#737373"]
+
+[theme.sidebar]
+backgroundColor = "#EEF0FF"
+borderColor = "#DDE6FF"
 
 [browser]
 gatherUsageStats = false
