@@ -14,8 +14,9 @@ class SettledRates:
     bin_rates: dict[str, float]
     amount_p99: dict[tuple[str, str], float]
 
-    def segment_rate(self, country: str, method: str) -> float:
-        return self.segment_rates.get((country, method), self.overall_rate)
+    def segment_rate(self, country: str, method: str) -> float | None:
+        # None for a segment the history never saw: no evidence either way
+        return self.segment_rates.get((country, method))
 
     def bin_rate(self, card_bin: str | None) -> float | None:
         return None if card_bin is None else self.bin_rates.get(card_bin)

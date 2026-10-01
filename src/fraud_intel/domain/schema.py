@@ -26,28 +26,64 @@ def transaction_columns() -> tuple[str, ...]:
     )
 
 
+def required_columns() -> tuple[str, ...]:
+    """The fields the challenge brief asks every transaction to carry."""
+    return (
+        "transaction_id",
+        "timestamp_utc",
+        "customer_id",
+        "billing_country",
+        "ip_country",
+        "payment_method",
+        "amount_usd",
+        "status",
+        "is_fraud",
+    )
+
+
+def optional_defaults() -> dict[str, object]:
+    # extra fields our generator adds; a batch without them still loads, and the rules that need them stay silent
+    return {
+        "customer_email": "",
+        "card_bin": None,
+        "booking_type": "unknown",
+        "destination_country": "unknown",
+        "departure_date": None,
+    }
+
+
 def validate_transactions(frame: pd.DataFrame) -> pd.DataFrame:
     """Check a raw batch and return it with normalized types; raise SchemaError listing every problem."""
     if frame is None:
         raise SchemaError("no transactions given")
-    missing = [column for column in transaction_columns() if column not in frame.columns]
+    missing = [column for column in required_columns() if column not in frame.columns]
     if missing:
         raise SchemaError(f"missing columns: {', '.join(missing)}")
 
-    clean = frame.loc[:, list(transaction_columns())].copy()
+    clean = frame.copy()
+    for column, default in optional_defaults().items():
+        if column not in clean.columns:
+            clean[column] = default
+    clean = clean.loc[:, list(transaction_columns())]
+    # an empty cell is a missing value, not a bad one
+    given_departure = clean["departure_date"].replace("", None).notna()
     clean["timestamp_utc"] = pd.to_datetime(clean["timestamp_utc"], errors="coerce")
-    clean["departure_date"] = pd.to_datetime(clean["departure_date"], errors="coerce")
+    clean["departure_date"] = pd.to_datetime(clean["departure_date"].replace("", None), errors="coerce")
     clean["amount_usd"] = pd.to_numeric(clean["amount_usd"], errors="coerce")
-    clean["is_fraud"] = clean["is_fraud"].astype(str).str.lower().map({"true": True, "false": False})
+    clean["is_fraud"] = (
+        clean["is_fraud"].astype(str).str.lower().map({"true": True, "false": False, "1": True, "0": False})
+    )
     # BINs are identifiers, so keep leading digits as text; non-card rows have none
-    clean["card_bin"] = clean["card_bin"].astype("string").str.replace(r"\.0$", "", regex=True)
+    clean["card_bin"] = clean["card_bin"].astype("string").str.replace(r"\.0$", "", regex=True).replace("", None)
     for column in ("transaction_id", "customer_id", "billing_country", "ip_country", "payment_method", "status"):
         clean[column] = clean[column].astype("string")
+    for column in ("customer_email", "booking_type", "destination_country"):
+        clean[column] = clean[column].astype("string").fillna(str(optional_defaults()[column]))
 
     problems = []
     checks = {
         "unparseable timestamp_utc": clean["timestamp_utc"].isna(),
-        "unparseable departure_date": clean["departure_date"].isna(),
+        "unparseable departure_date": given_departure & clean["departure_date"].isna(),
         "amount_usd missing or not positive": ~(clean["amount_usd"] > 0),
         "status not approved/declined": ~clean["status"].isin(["approved", "declined"]),
         "is_fraud not true/false": clean["is_fraud"].isna(),

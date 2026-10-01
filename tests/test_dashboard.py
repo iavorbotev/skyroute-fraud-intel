@@ -28,6 +28,22 @@ def database(config: AppConfig, tmp_path_factory: pytest.TempPathFactory) -> Pat
     return path
 
 
+@pytest.fixture(scope="module")
+def brief_only_database(config: AppConfig, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    small = replace(
+        config, generator=replace(config.generator, transactions_per_window=2000, customers_per_window=1500)
+    )
+    frame = generate_transactions(config=small)
+    recent = frame[frame["timestamp_utc"] >= frame["timestamp_utc"].max() - pd.Timedelta(days=29)]
+    brief_fields = ["transaction_id", "timestamp_utc", "customer_id", "billing_country", "ip_country"]
+    brief_fields += ["payment_method", "card_bin", "amount_usd", "status", "is_fraud"]
+    path = tmp_path_factory.mktemp("brief") / "brief.duckdb"
+    store = DuckDbStore(path=path, read_only=False)
+    store.append_raw(frame=recent.loc[:, brief_fields])
+    run_pipeline(store=store, config=small, notifier=RecordingNotifier())
+    return path
+
+
 def _app(database: Path) -> AppTest:
     os.environ["FRAUD_INTEL_DB"] = str(database)
     os.environ["FRAUD_INTEL_CONFIG"] = str(Path(__file__).parents[1] / "config.toml")
@@ -113,3 +129,14 @@ def test_top_bar_filters_the_transactions_list(database: Path) -> None:
     assert set(table["billing_country"]) == {"MX"}
     assert set(table["payment_method"]) == {"card"}
     assert set(table["risk_level"]) == {"high"}
+
+
+def test_every_page_renders_for_a_batch_with_only_the_brief_fields(brief_only_database: Path) -> None:
+    pages = ["countries", "payment_methods", "patterns", "transactions", "daily_report", "alerts", "score_check"]
+    app = _app(database=brief_only_database)
+    app.run()
+    assert not app.exception, app.exception
+    for page in pages:
+        app.switch_page(f"views/{page}.py")
+        app.run()
+        assert not app.exception, (page, app.exception)

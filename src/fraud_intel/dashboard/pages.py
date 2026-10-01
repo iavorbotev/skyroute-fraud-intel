@@ -81,7 +81,10 @@ def overview(context: PageContext) -> None:
     tiles[0].metric(
         "Fraud rate",
         f"{now['fraud_rate']:.2%}",
-        delta=f"{(now['fraud_rate'] - before['fraud_rate']) * 100:+.2f} pp vs history ({before['fraud_rate']:.2%})",
+        # a batch without earlier months has nothing to compare against
+        delta=None
+        if history.empty
+        else f"{(now['fraud_rate'] - before['fraud_rate']) * 100:+.2f} pp vs history ({before['fraud_rate']:.2%})",
         delta_color="inverse",
         border=True,
     )
@@ -112,12 +115,13 @@ def overview(context: PageContext) -> None:
 
     segments = segment_summary(frame=current, by=["billing_country", "payment_method"], chargeback_fee_usd=fee)
     sentence = comparison_sentence(
-        segments=segments, label_columns=["billing_country", "payment_method"], min_approved=100
+        segments=segments, label_columns=["billing_country", "payment_method"], min_approved=30
     )
     worst = segments.sort_values("chargeback_cost_usd", ascending=False).iloc[0]
     st.info(
         _md(
-            f"**{sentence or ''}** The costliest segment is {worst['billing_country']} {worst['payment_method']}: "
+            (f"**{sentence}** " if sentence else "")
+            + f"The costliest segment is {worst['billing_country']} {worst['payment_method']}: "
             f"{int(worst['frauds'])} chargebacks, ${worst['chargeback_cost_usd']:,.0f} lost."
         )
     )
@@ -179,10 +183,18 @@ def _daily_fraud_chart(daily: pd.DataFrame, scored_start: pd.Timestamp) -> go.Fi
             name="Spike day",
             marker={"color": _palette()["alert"], "size": 9, "line": {"color": "white", "width": 1}},
         )
-    figure.add_vline(x=scored_start, line_dash="dash", line_color="#555")
-    figure.add_annotation(
-        x=scored_start, y=1, yref="paper", text="scored window starts", showarrow=False, xanchor="left", yanchor="top"
-    )
+    # mark where scoring starts only when there is history before it to compare with
+    if not history.empty:
+        figure.add_vline(x=scored_start, line_dash="dash", line_color="#555")
+        figure.add_annotation(
+            x=scored_start,
+            y=1,
+            yref="paper",
+            text="scored window starts",
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+        )
     figure.update_yaxes(tickformat=".1%", title=None)
     return _layout(figure=figure, title="Fraud rate by day (chargebacks / approved)", height=380)
 
@@ -193,7 +205,8 @@ def _auth_rate_chart(daily: pd.DataFrame, scored_start: pd.Timestamp) -> go.Figu
     figure.add_scatter(
         x=daily["date"], y=daily["auth_rate"], name="Authorization rate", line={"color": _palette()["indigo"]}
     )
-    figure.add_vline(x=scored_start, line_dash="dash", line_color="#555")
+    if (daily["date"] < scored_start).any():
+        figure.add_vline(x=scored_start, line_dash="dash", line_color="#555")
     figure.update_yaxes(tickformat=".0%", range=[0.7, 0.95], title=None)
     return _layout(figure=figure, title="Authorization rate by day (lime band: healthy 82-85%)", height=280)
 
@@ -339,6 +352,7 @@ def _segment_trends(
     frame: pd.DataFrame, dimension: str, order: list[str], scored_start: pd.Timestamp, chargeback_fee_usd: float
 ) -> go.Figure:
     daily = segment_summary(frame=frame, by=["date", dimension], chargeback_fee_usd=chargeback_fee_usd)
+    has_history = bool((daily["date"] < scored_start).any())
     figure = make_subplots(rows=1, cols=len(order), shared_yaxes=True, subplot_titles=order, horizontal_spacing=0.02)
     for position, segment in enumerate(order, start=1):
         rows = daily[daily[dimension] == segment].sort_values("date")
@@ -360,7 +374,8 @@ def _segment_trends(
             row=1,
             col=position,
         )
-        figure.add_vline(x=scored_start, line_dash="dot", line_color=_palette()["grey"], row=1, col=position)
+        if has_history:
+            figure.add_vline(x=scored_start, line_dash="dot", line_color=_palette()["grey"], row=1, col=position)
     figure.update_yaxes(tickformat=".0%")
     # three ticks per small panel; more would overlap at this width
     figure.update_xaxes(tickformat="%d %b", dtick=21 * 24 * 3600 * 1000, tick0=frame["date"].min())
@@ -537,12 +552,12 @@ def _transaction_detail(row: pd.Series) -> None:
     facts[2].metric(
         "Method",
         row["payment_method"],
-        delta=f"BIN {row['card_bin']}" if row["card_bin"] else None,
+        delta=None if pd.isna(row["card_bin"]) else f"BIN {row['card_bin']}",
         delta_color="off",
         delta_arrow="off",
     )
     facts[3].metric("Customer", row["customer_type"])
-    facts[4].metric("Departs", f"{row['departure_date']:%d %b}")
+    facts[4].metric("Departs", "n/a" if pd.isna(row["departure_date"]) else f"{row['departure_date']:%d %b}")
     reasons = [reason for reason in str(row["reasons"]).split("; ") if reason]
     reason_list = "\n".join(f"- {reason}" for reason in reasons)
     st.markdown(_md(f"**Why it was flagged**\n{reason_list}") if reasons else "No rules fired.")

@@ -28,15 +28,20 @@ Or run one step at a time (`make help` lists them):
 | Target | What it does |
 |---|---|
 | `make install` | install dependencies with uv |
-| `make check` | ruff lint and format check, ty type check, 20 pytest tests |
+| `make check` | ruff lint and format check, ty type check, and the pytest suite |
 | `make data` | rebuild the seeded dataset from `config.toml` (it is also committed) |
 | `make ingest` | load `DATA`, replay the stream, save scores and alerts |
 | `make report DATE=2026-09-18` | export that day's Top 50 to `reports/` as CSV and JSON |
 | `make dashboard PORT=8501` | run the dashboard locally |
 | `make clean` | remove the database, reports, and caches |
 
-`ingest` takes any CSV or JSON batch with the same columns.
+`ingest` takes any CSV or JSON batch, for example `make ingest DATA=my_batch.csv`.
 It skips transaction IDs it has already seen, so feeding the same file twice is safe.
+
+A batch needs only the fields the brief lists: `transaction_id`, `timestamp_utc`, `customer_id`, `billing_country`, `ip_country`, `payment_method`, `amount_usd`, `status` (approved/declined), and `is_fraud`.
+`card_bin`, `customer_email`, `booking_type`, `destination_country`, and `departure_date` are optional.
+Rules that need a missing field stay silent: without `departure_date` there is no last-minute rule, and without `card_bin` no BIN rule.
+A batch of only 30 days has no settled history before it, so the three history rules (risky segment, risky BIN, value outlier) stay silent and the score rests on behavior: velocity, card testing, IP mismatch, new customer, and night bookings.
 
 ## What will a reviewer see?
 

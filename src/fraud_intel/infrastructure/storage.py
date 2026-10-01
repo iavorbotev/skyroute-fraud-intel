@@ -17,6 +17,9 @@ class DuckDbStore:
             raise ValueError("path is required")
         self._path = str(path)
         self._read_only = read_only
+        # a fresh checkout or a new config may point at a folder that does not exist yet
+        if not read_only:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     def append_raw(self, frame: pd.DataFrame) -> int:
         validated = validate_transactions(frame=frame)

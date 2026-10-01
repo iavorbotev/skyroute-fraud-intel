@@ -97,3 +97,23 @@ def test_two_batches_score_the_same_as_one(small_config: AppConfig) -> None:
     in_one = list(processor().process(transactions=events))
     assert in_two == in_one
     assert any(item.risk_level == "high" for item in in_one)
+
+
+def _brief_only_batch(config: AppConfig) -> pd.DataFrame:
+    # what a reviewer's own file looks like: 30 days, only the fields the brief lists, no earlier history
+    frame = generate_transactions(config=config)
+    recent = frame[frame["timestamp_utc"] >= frame["timestamp_utc"].max() - pd.Timedelta(days=29)]
+    columns = ["transaction_id", "timestamp_utc", "customer_id", "billing_country", "ip_country"]
+    columns += ["payment_method", "card_bin", "amount_usd", "status", "is_fraud"]
+    return recent.loc[:, columns]
+
+
+def test_batch_without_history_scores_on_behavior_only(small_config: AppConfig) -> None:
+    store = FakeStore()
+    store.append_raw(frame=_brief_only_batch(config=small_config))
+    run_pipeline(store=store, config=small_config, notifier=RecordingNotifier())
+    scored = store.load_scored()
+
+    assert scored["in_scored_window"].all()
+    assert not scored["rules_fired"].str.contains("risky_segment|risky_bin|value_outlier|last_minute").any()
+    assert (scored["risk_level"] == "high").any()

@@ -219,3 +219,14 @@ Decisions from the interview:
 ### Task log
 
 - **1-4. Redesign:** done. The filter bar renders from `app.py` above each page, after the page heading, which also moved into `app.py`. Widgets in the entry script keep their values across pages, so no extra state handling was needed. Countries and Payment methods share one `_segment_page` function. The screenshots caught three layout problems, now fixed: the card text was cut off, the card lines wrapped unevenly, and the methods table was too wide for the page. Streamlit scrolls its own main container, so a full-page screenshot only shows the first screen; the screenshot script now scrolls that container. A new test drives the top bar itself (MX, card, high) and checks the Transactions table: 24 tests in total.
+
+## Fix: a reviewer's own batch
+
+The brief's acceptance test is "feed your system a batch of transactions". We checked it against a 500-row CSV holding only the fields the brief lists, and four bugs turned up:
+
+- **Rejected batch.** The schema required four extra fields (`customer_email`, `booking_type`, `destination_country`, `departure_date`). Only the brief's fields are required now; the rest get neutral defaults, and rules that need a missing field stay silent.
+- **Every row flagged.** A batch with no earlier history has every settled rate at 0%, so `risky_segment` fired on 100% of rows ("CO card had 0.0% fraud last month (overall 0.0%)"). Segment and BIN rules now stay silent when there is no history or the segment is unknown.
+- **Crash on a new folder.** `ingest` crashed when the database folder did not exist yet. The store now creates it.
+- **Dashboard crash and display bugs.** An all-empty `departure_date` column was stored as an integer type, which crashed the date math; it is now typed explicitly. The overview showed a literal `****` and a meaningless "scored window starts" line when there was no history; both are fixed.
+
+New tests cover the brief-only schema, scoring with no history, the missing folder, and every page rendering for a brief-only batch (27 tests). Ran it end to end with the CLI (ingest, report) and in the browser through the container. The main dataset's results did not change: 312 high-risk bookings, 49 alerts.

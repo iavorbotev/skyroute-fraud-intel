@@ -21,7 +21,7 @@ class Transaction:
     is_fraud: bool
     booking_type: str
     destination_country: str
-    departure_date: datetime
+    departure_date: datetime | None
 
     @property
     def approved(self) -> bool:
@@ -38,9 +38,9 @@ class Signals:
     minutes_since_first_in_window: float
     is_returning: bool
     local_hour: int
-    hours_to_departure: float
+    hours_to_departure: float | None
     overall_rate: float
-    segment_rate: float
+    segment_rate: float | None
     bin_rate: float | None
     amount_p99: float | None
 
@@ -80,7 +80,7 @@ def transactions_from_frame(frame: pd.DataFrame) -> list[Transaction]:
                 is_fraud=bool(row["is_fraud"]),
                 booking_type=str(row["booking_type"]),
                 destination_country=str(row["destination_country"]),
-                departure_date=row["departure_date"].to_pydatetime(),
+                departure_date=None if pd.isna(row["departure_date"]) else row["departure_date"].to_pydatetime(),
             )
         )
     return events
@@ -120,4 +120,7 @@ def scored_to_frame(scored: list[ScoredTransaction]) -> pd.DataFrame:
         )
     frame = pd.DataFrame.from_records(records)
     frame["risk_score"] = frame["risk_score"].astype("Int64")
+    # fix the types of columns that can be entirely empty, or the store guesses them (all-null becomes integer)
+    frame["departure_date"] = pd.to_datetime(frame["departure_date"])
+    frame["card_bin"] = frame["card_bin"].astype("string")
     return frame

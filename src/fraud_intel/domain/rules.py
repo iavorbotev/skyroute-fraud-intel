@@ -100,6 +100,8 @@ def _value_outlier(transaction: Transaction, signals: Signals, risk: RiskConfig)
 
 
 def _last_minute(transaction: Transaction, signals: Signals, risk: RiskConfig) -> str | None:
+    if signals.hours_to_departure is None:
+        return None
     if signals.hours_to_departure > risk.last_minute_hours or transaction.amount_usd < risk.last_minute_min_usd:
         return None
     return f"Travel starts in {max(0, round(signals.hours_to_departure))} h"
@@ -112,6 +114,9 @@ def _night_hours(transaction: Transaction, signals: Signals, risk: RiskConfig) -
 
 
 def _risky_segment(transaction: Transaction, signals: Signals, risk: RiskConfig) -> str | None:
+    # with no settled history there is no rate to compare against, so the rule stays silent
+    if signals.segment_rate is None or signals.overall_rate <= 0:
+        return None
     if signals.segment_rate < risk.risky_segment_multiplier * signals.overall_rate:
         return None
     return (
@@ -121,6 +126,8 @@ def _risky_segment(transaction: Transaction, signals: Signals, risk: RiskConfig)
 
 
 def _risky_bin(transaction: Transaction, signals: Signals, risk: RiskConfig) -> str | None:
-    if signals.bin_rate is None or signals.bin_rate < risk.risky_bin_multiplier * signals.overall_rate:
+    if signals.bin_rate is None or signals.overall_rate <= 0:
+        return None
+    if signals.bin_rate < risk.risky_bin_multiplier * signals.overall_rate:
         return None
     return f"BIN {transaction.card_bin} had {signals.bin_rate:.1%} fraud last month"

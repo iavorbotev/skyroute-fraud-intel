@@ -75,8 +75,12 @@ class StreamProcessor:
         )
         first_seen = earlier[0][0] if earlier else transaction.timestamp_utc
         offset = timedelta(hours=self._utc_offset_hours.get(transaction.billing_country, 0))
-        # departure_date has no time, so assume a midday departure
-        departure = transaction.departure_date + timedelta(hours=12)
+        # departure_date has no time, so assume a midday departure; batches without travel dates skip the rule
+        hours_to_departure = (
+            None
+            if transaction.departure_date is None
+            else (transaction.departure_date + timedelta(hours=12) - transaction.timestamp_utc).total_seconds() / 3600
+        )
         segment = (transaction.billing_country, transaction.payment_method)
         return Signals(
             attempts_in_window=len(earlier) + 1,
@@ -85,7 +89,7 @@ class StreamProcessor:
             minutes_since_first_in_window=(transaction.timestamp_utc - first_seen).total_seconds() / 60,
             is_returning=memory.has_approved_booking,
             local_hour=(transaction.timestamp_utc + offset).hour,
-            hours_to_departure=(departure - transaction.timestamp_utc).total_seconds() / 3600,
+            hours_to_departure=hours_to_departure,
             overall_rate=self._rates.overall_rate,
             segment_rate=self._rates.segment_rate(*segment),
             bin_rate=self._rates.bin_rate(transaction.card_bin),
