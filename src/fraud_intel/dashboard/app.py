@@ -61,6 +61,15 @@ def _sidebar(scored: pd.DataFrame) -> Filters:
 
 def main() -> None:
     st.set_page_config(page_title="SkyRoute Fraud Intelligence", page_icon="🛡️", layout="wide")
+    # Streamlit has no theme option for the page links, and the default 14px reads small next to the filters
+    st.html(
+        """
+        <style>
+        [data-testid="stSidebarNavLink"] p { font-size: 1.15rem; line-height: 1.4; }
+        [data-testid="stSidebarNavLink"] [data-testid="stIconEmoji"] { font-size: 1.2rem; }
+        </style>
+        """
+    )
     config = _config(config_path=os.environ.get("FRAUD_INTEL_CONFIG", "config.toml"))
     database_path = os.environ.get("FRAUD_INTEL_DB", str(config.database_path))
     scored, alerts = _load(database_path=database_path)
